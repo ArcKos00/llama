@@ -139,12 +139,39 @@ fi
 source .venv/bin/activate
 success "Virtual environment activated"
 
-# 4. Оновлення pip
-step Update pip
+# 4. Update pip
 step "[4/8] Updating pip"
 
 # Try with alternative mirrors if default fails
-MIRROInstall dependencies
+MIRRORS=(
+    ""
+    "https://mirrors.aliyun.com/pypi/simple/"
+    "https://pypi.tuna.tsinghua.edu.cn/simple/"
+)
+
+PIP_UPDATED=false
+SUCCESSFUL_MIRROR=""
+
+for MIRROR in "${MIRRORS[@]}"; do
+    if [ -z "$MIRROR" ]; then
+        echo "Trying default PyPI..."
+        python -m pip install --upgrade pip >/dev/null 2>&1 && PIP_UPDATED=true && SUCCESSFUL_MIRROR="Default PyPI"
+    else
+        echo "Trying mirror: $MIRROR"
+        python -m pip install --upgrade pip -i "$MIRROR" >/dev/null 2>&1 && PIP_UPDATED=true && SUCCESSFUL_MIRROR="$MIRROR"
+    fi
+    
+    if [ "$PIP_UPDATED" = true ]; then
+        success "pip updated (using $SUCCESSFUL_MIRROR)"
+        break
+    fi
+done
+
+if [ "$PIP_UPDATED" = false ]; then
+    warning "Could not update pip, continuing with current version..."
+fi
+
+# 5. Install dependencies
 step "[5/8] Installing dependencies from requirements.txt"
 if [ -f "requirements.txt" ]; then
     echo "Installing packages... (this may take a while)"
@@ -154,8 +181,49 @@ if [ -f "requirements.txt" ]; then
     for MIRROR in "${MIRRORS[@]}"; do
         if [ -z "$MIRROR" ]; then
             echo "Trying default PyPI..."
-     Install llama-cpp-python[server]
+            python -m pip install -r requirements.txt >/dev/null 2>&1 && INSTALL_SUCCESS=true
+        else
+            echo "Trying mirror: $MIRROR"
+            python -m pip install -r requirements.txt -i "$MIRROR" >/dev/null 2>&1 && INSTALL_SUCCESS=true && SUCCESSFUL_MIRROR="$MIRROR"
+        fi
+        
+        if [ "$INSTALL_SUCCESS" = true ]; then
+            success "Dependencies installed"
+            break
+        fi
+    done
+    
+    if [ "$INSTALL_SUCCESS" = false ]; then
+        error "Failed to install dependencies"
+        echo "Try manually: python -m pip install -r requirements.txt"
+        exit 1
+    fi
+else
+    error "requirements.txt not found"
+    exit 1
+fi
+
+# 6. Install llama-cpp-python[server]
 step "[6/8] Installing llama-cpp-python[server]"
+
+# First, test network connectivity from WSL
+echo "Testing network from WSL..."
+if ! curl -s --connect-timeout 5 https://pypi.org > /dev/null 2>&1; then
+    error "Cannot connect to PyPI from WSL"
+    echo ""
+    echo "Network troubleshooting:"
+    echo "  1. Check WSL network: ping google.com"
+    echo "  2. Check DNS: cat /etc/resolv.conf"
+    echo "  3. Try restarting WSL: wsl --shutdown (from Windows)"
+    echo "  4. Check Windows firewall/antivirus"
+    echo ""
+    echo "Try manually:"
+    echo "  python -m pip install llama-cpp-python[server] -vvv"
+    echo ""
+    exit 1
+fi
+success "Network connection OK"
+
 echo "This may take several minutes..."
 
 # Check for CUDA
@@ -169,15 +237,17 @@ if [ "$CUDA_AVAILABLE" = true ]; then
     success "CUDA available, installing with GPU support"
     export CMAKE_ARGS="-DLLAMA_CUBLAS=on"
     echo "Building with CUDA support... (this will take 5-10 minutes)"
+    echo "Showing output (this may be verbose)..."
+    echo ""
     
     INSTALL_SUCCESS=false
     for MIRROR in "${MIRRORS[@]}"; do
         if [ -z "$MIRROR" ]; then
             echo "Trying default PyPI..."
-            python -m pip install llama-cpp-python[server] --upgrade --force-reinstall --no-cache-dir >/dev/null 2>&1 && INSTALL_SUCCESS=true
+            python -m pip install llama-cpp-python[server] --upgrade --force-reinstall --no-cache-dir && INSTALL_SUCCESS=true
         else
             echo "Trying mirror: $MIRROR"
-            python -m pip install llama-cpp-python[server] --upgrade --force-reinstall --no-cache-dir -i "$MIRROR" >/dev/null 2>&1 && INSTALL_SUCCESS=true
+            python -m pip install llama-cpp-python[server] --upgrade --force-reinstall --no-cache-dir -i "$MIRROR" && INSTALL_SUCCESS=true
         fi
         
         if [ "$INSTALL_SUCCESS" = true ]; then
@@ -195,15 +265,27 @@ fi
 if [ "$CUDA_AVAILABLE" = false ]; then
     warning "Installing CPU version"
     echo "Installing llama-cpp-python... (this may take a few minutes)"
+    echo "Showing output..."
+    echo ""
     
     INSTALL_SUCCESS=false
+    LAST_ERROR=""
+    
     for MIRROR in "${MIRRORS[@]}"; do
         if [ -z "$MIRROR" ]; then
             echo "Trying default PyPI..."
-            python -m pip install llama-cpp-python[server] >/dev/null 2>&1 && INSTALL_SUCCESS=true
+            if python -m pip install llama-cpp-python[server] 2>&1 | tee /tmp/pip_install.log; then
+                INSTALL_SUCCESS=true
+            else
+                LAST_ERROR=$(tail -20 /tmp/pip_install.log)
+            fi
         else
             echo "Trying mirror: $MIRROR"
-            python -m pip install llama-cpp-python[server] -i "$MIRROR" >/dev/null 2>&1 && INSTALL_SUCCESS=true
+            if python -m pip install llama-cpp-python[server] -i "$MIRROR" 2>&1 | tee /tmp/pip_install.log; then
+                INSTALL_SUCCESS=true
+            else
+                LAST_ERROR=$(tail -20 /tmp/pip_install.log)
+            fi
         fi
         
         if [ "$INSTALL_SUCCESS" = true ]; then
@@ -214,11 +296,18 @@ if [ "$CUDA_AVAILABLE" = false ]; then
     
     if [ "$INSTALL_SUCCESS" = false ]; then
         error "Failed to install llama-cpp-python"
+        echo ""
+        echo "Last error:"
+        echo "$LAST_ERROR"
+        echo ""
+        echo "Try manually with verbose output:"
+        echo "  python -m pip install llama-cpp-python[server] -vvv"
+        echo ""
         exit 1
     fi
-        error "Failed to install dependencies"
-        echo "Try manually: python -m pip install -r requirements.txt"
-     Set execute permissions
+fi
+
+# 7. Set execute permissions
 step "[7/8] Setting execute permissions"
 chmod +x start.sh 2>/dev/null && success "start.sh executable" || warning "start.sh not found"
 chmod +x stop.sh 2>/dev/null && success "stop.sh executable" || warning "stop.sh not found"
@@ -274,54 +363,5 @@ echo -e "  1. Make sure model is in models/ directory"
 echo -e "  2. Check config.json (model path)"
 echo -e "  3. Start server: ${GREEN}./start.sh${NC}"
 echo ""
-echo -e "${CYAN}Documentation
-step "[8/8] Перевірка моделей"
-MODELS_DIR="./models"
-if [ ! -d "$MODELS_DIR" ]; then
-    warning "Директорія models/ не знайдена, створюємо..."
-    mkdir -p "$MODELS_DIR"
-fi
-
-MODEL_COUNT=$(find "$MODELS_DIR" -name "*.gguf" 2>/dev/null | wc -l)
-if [ "$MODEL_COUNT" -eq 0 ]; then
-    warning "Моделі .gguf не знайдено в $MODELS_DIR/"
-    echo -e "${YELLOW}Завантажте моделі у форматі GGUF в директорію models/${NC}"
-    echo -e "${YELLOW}Наприклад з: https://huggingface.co/${NC}"
-else
-    success "Знайдено моделей: $MODEL_COUNT"
-    find "$MODELS_DIR" -name "*.gguf" -exec basename {} \; | while read model; do
-        echo -e "  ${GREEN}•${NC} $model"
-    done
-fi
-
-# Перевірка конфігурації
-echo ""
-step "Перевірка конфігурації"
-if [ -f "config.json" ]; then
-    MODEL_PATH=$(python3 -c "import json; print(json.load(open('config.json'))['model']['path'])" 2>/dev/null)
-    if [ -f "$MODEL_PATH" ]; then
-        success "Модель в config.json існує: $(basename $MODEL_PATH)"
-    else
-        warning "Модель в config.json не знайдена: $MODEL_PATH"
-        echo -e "${YELLOW}Оновіть шлях до моделі в config.json${NC}"
-    fi
-else
-    error "config.json не знайдено"
-fi
-
-# Підсумок
-echo ""
-echo -e "${BLUE}╔════════════════════════════════════════════════╗${NC}"
-echo -e "${BLUE}║            Налаштування завершено!            ║${NC}"
-echo -e "${BLUE}╚════════════════════════════════════════════════╝${NC}"
-echo ""
-echo -e "${GREEN}✓ Всі залежності встановлено${NC}"
-echo -e "${GREEN}✓ Скрипти готові до використання${NC}"
-echo ""
-echo -e "${YELLOW}Наступні кроки:${NC}"
-echo -e "  1. Переконайтесь що модель є в директорії models/"
-echo -e "  2. Перевірте config.json (шлях до моделі)"
-echo -e "  3. Запустіть сервер: ${GREEN}./start.sh${NC}"
-echo ""
-echo -e "${BLUE}Документація: README.md${NC}"
+echo -e "${CYAN}Documentation: README.md${NC}"
 echo ""
