@@ -1,121 +1,280 @@
 #!/bin/bash
-# Скрипт для повного налаштування середовища LLM Proxy Server
+# LLM Proxy Server - Complete Setup Script
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-# Кольори
+# Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
+CYAN='\033[0;36m'
 NC='\033[0m'
 
-echo -e "${BLUE}"
-echo "╔════════════════════════════════════════════════╗"
-echo "║   LLM Proxy Server - Налаштування середовища  ║"
-echo "╚════════════════════════════════════════════════╝"
+echo -e "${CYAN}"
+echo "========================================"
+echo "  LLM Proxy Server - Setup Environment  "
+echo "========================================"
 echo -e "${NC}"
 
-# Функція для перевірки команди
+# Helper functions
 command_exists() {
     command -v "$1" >/dev/null 2>&1
 }
 
-# Функція для виведення кроку
 step() {
-    echo -e "\n${BLUE}▶ $1${NC}"
+    echo -e "\n${CYAN}> $1${NC}"
 }
 
-# Функція для виведення успіху
 success() {
-    echo -e "${GREEN}✓ $1${NC}"
+    echo -e "${GREEN}[OK] $1${NC}"
 }
 
-# Функція для виведення помилки
 error() {
-    echo -e "${RED}✗ $1${NC}"
+    echo -e "${RED}[ERROR] $1${NC}"
 }
 
-# Функція для виведення попередження
 warning() {
-    echo -e "${YELLOW}⚠ $1${NC}"
+    echo -e "${YELLOW}[WARNING] $1${NC}"
 }
 
-# 1. Перевірка Python
-step "[1/8] Перевірка Python"
-if ! command_exists python3; then
-    error "Python3 не знайдено. Встановіть Python 3.8 або новіше"
-    exit 1
-fi
+# Function to install Python 3.11
+install_python311() {
+    step "Installing Python 3.11"
+    
+    if command_exists apt-get; then
+        # Ubuntu/Debian
+        echo "Using apt-get to install Python 3.11..."
+        sudo apt-get update
+        sudo apt-get install -y software-properties-common
+        sudo add-apt-repository -y ppa:deadsnakes/ppa
+        sudo apt-get update
+        sudo apt-get install -y python3.11 python3.11-venv python3.11-dev python3-pip
+        success "Python 3.11 installed via apt"
+    elif command_exists yum; then
+        # CentOS/RHEL
+        echo "Using yum to install Python 3.11..."
+        sudo yum install -y gcc openssl-devel bzip2-devel libffi-devel
+        cd /tmp
+        wget https://www.python.org/ftp/python/3.11.9/Python-3.11.9.tgz
+        tar xzf Python-3.11.9.tgz
+        cd Python-3.11.9
+        ./configure --enable-optimizations
+        sudo make altinstall
+        cd "$SCRIPT_DIR"
+        success "Python 3.11 installed from source"
+    else
+        error "Cannot install Python automatically. Please install Python 3.11 manually"
+        exit 1
+    fi
+}
 
-PYTHON_VERSION=$(python3 --version 2>&1 | awk '{print $2}')
-success "Python знайдено: $PYTHON_VERSION"
+# 1. Check Python 3.11
+step "[1/8] Checking Python 3.11"
 
-# 2. Перевірка pip
-step "[2/8] Перевірка pip"
-if ! command_exists pip3; then
-    error "pip3 не знайдено. Встановіть pip"
-    exit 1
-fi
-success "pip знайдено: $(pip3 --version)"
+PYTHON_CMD=""
+NEED_INSTALL=false
 
-# 3. Створення віртуального середовища (опційно)
-step "[3/8] Віртуальне середовище"
-if [ -d "venv" ]; then
-    warning "Віртуальне середовище вже існує, пропускаємо створення"
+# Try python3.11 first
+if command_exists python3.11; then
+    PYTHON_CMD="python3.11"
+    PYTHON_VERSION=$(python3.11 --version 2>&1)
+    success "Python 3.11 found: $PYTHON_VERSION"
+# Then try python3
+elif command_exists python3; then
+    PYTHON_VERSION=$(python3 --version 2>&1)
+    if [[ $PYTHON_VERSION == *"3.11."* ]]; then
+        PYTHON_CMD="python3"
+        success "Python 3.11 found: $PYTHON_VERSION"
+    else
+        warning "Python found but not 3.11: $PYTHON_VERSION"
+        NEED_INSTALL=true
+    fi
 else
-    read -p "Створити віртуальне середовище? (y/n): " -n 1 -r
+    warning "Python not found"
+    NEED_INSTALL=true
+fi
+
+if [ "$NEED_INSTALL" = true ]; then
+    read -p "Install Python 3.11 automatically? (y/n): " -n 1 -r
     echo
     if [[ $REPLY =~ ^[Yy]$ ]]; then
-        python3 -m venv venv
-        success "Віртуальне середовище створено"
-        echo -e "${YELLOW}Для активації використайте: source venv/bin/activate${NC}"
+        install_python311
+        if command_exists python3.11; then
+            PYTHON_CMD="python3.11"
+            PYTHON_VERSION=$(python3.11 --version 2>&1)
+            success "Python 3.11 installed: $PYTHON_VERSION"
+        else
+            error "Python 3.11 installation failed"
+            exit 1
+        fi
     else
-        warning "Віртуальне середовище не створено"
+        error "Python 3.11 is required. Install from: https://www.python.org/downloads/"
+        exit 1
     fi
 fi
 
+# 2. Check pip
+step "[2/8] Checking pip"
+if ! $PYTHON_CMD -m pip --version >/dev/null 2>&1; then
+    error "pip not found. Installing pip..."
+    curl -sS https://bootstrap.pypa.io/get-pip.py | $PYTHON_CMD
+fi
+PIP_VERSION=$($PYTHON_CMD -m pip --version)
+success "pip found: $PIP_VERSION"
+
+# 3. Create virtual environment
+step "[3/8] Creating virtual environment"
+if [ -d ".venv" ]; then
+    warning "Virtual environment already exists"
+else
+    echo "Creating .venv with Python 3.11..."
+    $PYTHON_CMD -m venv .venv
+    success "Virtual environment created"
+fi
+
+# Activate virtual environment
+source .venv/bin/activate
+success "Virtual environment activated"
+
 # 4. Оновлення pip
-step "[4/8] Оновлення pip"
-python3 -m pip install --upgrade pip > /dev/null 2>&1
-success "pip оновлено"
+step Update pip
+step "[4/8] Updating pip"
 
-# 5. Встановлення основних залежностей
-step "[5/8] Встановлення залежностей з requirements.txt"
+# Try with alternative mirrors if default fails
+MIRROInstall dependencies
+step "[5/8] Installing dependencies from requirements.txt"
 if [ -f "requirements.txt" ]; then
-    pip3 install -r requirements.txt
-    success "Залежності встановлено"
-else
-    error "requirements.txt не знайдено"
-    exit 1
-fi
+    echo "Installing packages... (this may take a while)"
+    
+    INSTALL_SUCCESS=false
+    
+    for MIRROR in "${MIRRORS[@]}"; do
+        if [ -z "$MIRROR" ]; then
+            echo "Trying default PyPI..."
+     Install llama-cpp-python[server]
+step "[6/8] Installing llama-cpp-python[server]"
+echo "This may take several minutes..."
 
-# 6. Встановлення llama-cpp-python[server]
-step "[6/8] Встановлення llama-cpp-python[server]"
-echo -e "${YELLOW}Це може зайняти кілька хвилин...${NC}"
-
-# Перевірка наявності CUDA для GPU підтримки
+# Check for CUDA
+CUDA_AVAILABLE=false
 if command_exists nvcc; then
-    warning "CUDA знайдено, встановлюємо з підтримкою GPU"
-    CMAKE_ARGS="-DLLAMA_CUBLAS=on" pip3 install llama-cpp-python[server] --upgrade --force-reinstall --no-cache-dir
-    success "llama-cpp-python[server] встановлено з підтримкою CUDA"
-else
-    warning "CUDA не знайдено, встановлюємо CPU версію"
-    pip3 install llama-cpp-python[server]
-    success "llama-cpp-python[server] встановлено (CPU)"
+    warning "CUDA detected, installing with GPU support"
+    CUDA_AVAILABLE=true
 fi
 
-# 7. Налаштування прав доступу до скриптів
-step "[7/8] Налаштування прав доступу"
-chmod +x start.sh 2>/dev/null && success "start.sh - виконуваний" || warning "start.sh не знайдено"
-chmod +x stop.sh 2>/dev/null && success "stop.sh - виконуваний" || warning "stop.sh не знайдено"
-chmod +x start_llama_server.sh 2>/dev/null && success "start_llama_server.sh - виконуваний" || warning "start_llama_server.sh не знайдено"
-chmod +x start_proxy_server.sh 2>/dev/null && success "start_proxy_server.sh - виконуваний" || warning "start_proxy_server.sh не знайдено"
+if [ "$CUDA_AVAILABLE" = true ]; then
+    success "CUDA available, installing with GPU support"
+    export CMAKE_ARGS="-DLLAMA_CUBLAS=on"
+    echo "Building with CUDA support... (this will take 5-10 minutes)"
+    
+    INSTALL_SUCCESS=false
+    for MIRROR in "${MIRRORS[@]}"; do
+        if [ -z "$MIRROR" ]; then
+            echo "Trying default PyPI..."
+            python -m pip install llama-cpp-python[server] --upgrade --force-reinstall --no-cache-dir >/dev/null 2>&1 && INSTALL_SUCCESS=true
+        else
+            echo "Trying mirror: $MIRROR"
+            python -m pip install llama-cpp-python[server] --upgrade --force-reinstall --no-cache-dir -i "$MIRROR" >/dev/null 2>&1 && INSTALL_SUCCESS=true
+        fi
+        
+        if [ "$INSTALL_SUCCESS" = true ]; then
+            success "llama-cpp-python[server] installed with CUDA"
+            break
+        fi
+    done
+    
+    if [ "$INSTALL_SUCCESS" = false ]; then
+        warning "Failed to install with CUDA, trying CPU version..."
+        CUDA_AVAILABLE=false
+    fi
+fi
 
-# 8. Перевірка моделей
+if [ "$CUDA_AVAILABLE" = false ]; then
+    warning "Installing CPU version"
+    echo "Installing llama-cpp-python... (this may take a few minutes)"
+    
+    INSTALL_SUCCESS=false
+    for MIRROR in "${MIRRORS[@]}"; do
+        if [ -z "$MIRROR" ]; then
+            echo "Trying default PyPI..."
+            python -m pip install llama-cpp-python[server] >/dev/null 2>&1 && INSTALL_SUCCESS=true
+        else
+            echo "Trying mirror: $MIRROR"
+            python -m pip install llama-cpp-python[server] -i "$MIRROR" >/dev/null 2>&1 && INSTALL_SUCCESS=true
+        fi
+        
+        if [ "$INSTALL_SUCCESS" = true ]; then
+            success "llama-cpp-python[server] installed (CPU)"
+            break
+        fi
+    done
+    
+    if [ "$INSTALL_SUCCESS" = false ]; then
+        error "Failed to install llama-cpp-python"
+        exit 1
+    fi
+        error "Failed to install dependencies"
+        echo "Try manually: python -m pip install -r requirements.txt"
+     Set execute permissions
+step "[7/8] Setting execute permissions"
+chmod +x start.sh 2>/dev/null && success "start.sh executable" || warning "start.sh not found"
+chmod +x stop.sh 2>/dev/null && success "stop.sh executable" || warning "stop.sh not found"
+chmod +x start_llama_server.sh 2>/dev/null && success "start_llama_server.sh executable" || warning "start_llama_server.sh not found"
+chmod +x start_proxy_server.sh 2>/dev/null && success "start_proxy_server.sh executable" || warning "start_proxy_server.sh not found"
+
+# 8. Check models
+step "[8/8] Checking models"
+MODELS_DIR="./models"
+if [ ! -d "$MODELS_DIR" ]; then
+    warning "models/ directory not found, creating..."
+    mkdir -p "$MODELS_DIR"
+fi
+
+MODEL_COUNT=$(find "$MODELS_DIR" -name "*.gguf" 2>/dev/null | wc -l)
+if [ "$MODEL_COUNT" -eq 0 ]; then
+    warning "No .gguf models found in $MODELS_DIR/"
+    echo -e "${YELLOW}Download GGUF models to models/ directory${NC}"
+    echo -e "${YELLOW}For example from: https://huggingface.co/${NC}"
+else
+    success "Found $MODEL_COUNT model(s)"
+    find "$MODELS_DIR" -name "*.gguf" -exec basename {} \; | while read model; do
+        echo -e "  ${GREEN}[OK]${NC} $model"
+    done
+fi
+
+# Check configuration
+echo ""
+step "Checking configuration"
+if [ -f "config.json" ]; then
+    MODEL_PATH=$(python -c "import json; print(json.load(open('config.json'))['model']['path'])" 2>/dev/null)
+    if [ -f "$MODEL_PATH" ]; then
+        success "Model in config.json exists: $(basename $MODEL_PATH)"
+    else
+        warning "Model in config.json not found: $MODEL_PATH"
+        echo -e "${YELLOW}Update model path in config.json${NC}"
+    fi
+else
+    error "config.json not found"
+fi
+
+# Summary
+echo ""
+echo -e "${CYAN}========================================${NC}"
+echo -e "${CYAN}           Setup Complete!             ${NC}"
+echo -e "${CYAN}========================================${NC}"
+echo ""
+echo -e "${GREEN}[OK] All dependencies installed${NC}"
+echo -e "${GREEN}[OK] Scripts ready to use${NC}"
+echo ""
+echo -e "${YELLOW}Next steps:${NC}"
+echo -e "  1. Make sure model is in models/ directory"
+echo -e "  2. Check config.json (model path)"
+echo -e "  3. Start server: ${GREEN}./start.sh${NC}"
+echo ""
+echo -e "${CYAN}Documentation
 step "[8/8] Перевірка моделей"
 MODELS_DIR="./models"
 if [ ! -d "$MODELS_DIR" ]; then

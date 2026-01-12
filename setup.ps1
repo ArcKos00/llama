@@ -39,17 +39,97 @@ Write-ColorOutput "========================================" "Cyan"
 Write-ColorOutput "  LLM Proxy Server - Setup Environment  " "Cyan"
 Write-ColorOutput "========================================" "Cyan"
 
-# 1. Check Python
-Write-Step "[1/8] Checking Python"
-try {
-    $pythonVersion = python --version 2>&1
-    if ($LASTEXITCODE -ne 0) {
-        throw "Python not found"
+# Function to download and install Python 3.11
+function Install-Python311 {
+    Write-Step "Installing Python 3.11"
+    
+    $pythonVersion = "3.11.9"
+    $pythonInstaller = "python-$pythonVersion-amd64.exe"
+    $pythonUrl = "https://www.python.org/ftp/python/$pythonVersion/$pythonInstaller"
+    $installerPath = Join-Path $env:TEMP $pythonInstaller
+    
+    Write-Host "Downloading Python $pythonVersion..." -ForegroundColor Gray
+    try {
+        $ProgressPreference = 'SilentlyContinue'
+        Invoke-WebRequest -Uri $pythonUrl -OutFile $installerPath -UseBasicParsing
+        Write-Success "Downloaded Python installer"
+    } catch {
+        Write-Error-Custom "Failed to download Python: $_"
+        Write-Host "Please download manually from: https://www.python.org/downloads/" -ForegroundColor Yellow
+        exit 1
     }
-    Write-Success "Python found: $pythonVersion"
+    
+    Write-Host "Installing Python $pythonVersion..." -ForegroundColor Gray
+    Write-Host "This will take a few minutes..." -ForegroundColor Gray
+    
+    $installArgs = @(
+        "/quiet",
+        "InstallAllUsers=0",
+        "PrependPath=1",
+        "Include_test=0",
+        "Include_pip=1",
+        "Include_doc=0"
+    )
+    
+    try {
+        Start-Process -FilePath $installerPath -ArgumentList $installArgs -Wait -NoNewWindow
+        Write-Success "Python $pythonVersion installed"
+        
+        # Refresh PATH
+        $env:Path = [System.Environment]::GetEnvironmentVariable("Path","User") + ";" + [System.Environment]::GetEnvironmentVariable("Path","Machine")
+        
+        # Clean up
+        Remove-Item $installerPath -Force
+        
+        # Wait a bit for PATH to update
+        Start-Sleep -Seconds 3
+        
+        return $true
+    } catch {
+        Write-Error-Custom "Failed to install Python: $_"
+        Remove-Item $installerPath -Force -ErrorAction SilentlyContinue
+        exit 1
+    }
+}
+
+# 1. Check Python 3.11
+Write-Step "[1/8] Checking Python 3.11"
+
+$pythonExe = "python"
+$needInstall = $false
+
+try {
+    $pythonVersion = & python --version 2>&1 | Out-String
+    
+    # Check if Python 3.11.x
+    if ($pythonVersion -match "Python 3\.11\.") {
+        Write-Success "Python 3.11 found: $($pythonVersion.Trim())"
+    } else {
+        Write-Warning-Custom "Python found but not 3.11: $($pythonVersion.Trim())"
+        $needInstall = $true
+    }
 } catch {
-    Write-Error-Custom "Python not found. Install Python 3.8 or newer"
-    exit 1
+    Write-Warning-Custom "Python not found in PATH"
+    $needInstall = $true
+}
+
+if ($needInstall) {
+    $install = Read-Host "Install Python 3.11 automatically? (y/n)"
+    if ($install -match "^[Yy]$") {
+        Install-Python311
+        
+        # Verify installation
+        try {
+            $pythonVersion = & python --version 2>&1 | Out-String
+            Write-Success "Python 3.11 installed: $($pythonVersion.Trim())"
+        } catch {
+            Write-Error-Custom "Python installation failed"
+            exit 1
+        }
+    } else {
+        Write-Error-Custom "Python 3.11 is required. Install manually from: https://www.python.org/downloads/"
+        exit 1
+    }
 }
 
 # 2. Check pip
