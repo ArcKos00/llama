@@ -316,7 +316,44 @@ if (-not $cudaAvailable) {
                 Remove-Item $cudaInstaller -ErrorAction SilentlyContinue
                 
                 Read-Host "Press Enter to exit"
-                exit 0 -ForegroundColor Gray
+                exit 0
+            } catch {
+                Write-Error-Custom "Failed to download or install CUDA"
+                Remove-Item $cudaInstaller -ErrorAction SilentlyContinue
+            }
+        }
+    }
+}
+
+# 7. Install llama-cpp-python[server]
+Write-Step "[7/8] Installing llama-cpp-python[server]"
+
+# Mirrors to try
+$mirrorsToTry = @()
+if ($script:successfulMirror) {
+    $mirrorsToTry += @{Name="Previous successful"; Url=$script:successfulMirror}
+}
+$mirrorsToTry += @(
+    @{Name="Default (PyPI)"; Url=""},
+    @{Name="Aliyun (China)"; Url="https://mirrors.aliyun.com/pypi/simple/"},
+    @{Name="Tsinghua (China)"; Url="https://pypi.tuna.tsinghua.edu.cn/simple"}
+)
+
+# Re-check CUDA after possible installation
+$cudaAvailable = $false
+try {
+    $nvccVersion = nvcc --version 2>&1
+    if ($LASTEXITCODE -eq 0) {
+        $cudaAvailable = $true
+    }
+} catch {
+    $cudaAvailable = $false
+}
+
+if ($cudaAvailable) {
+    Write-Success "CUDA available, installing with GPU support"
+    $env:CMAKE_ARGS = "-DLLAMA_CUBLAS=on"
+    Write-Host "Building with CUDA support... (this will take 5-10 minutes)" -ForegroundColor Gray
     
     $installCmd = "llama-cpp-python[server]"
     $installSuccess = $false
@@ -376,8 +413,11 @@ if (-not $cudaAvailable) {
         Write-Error-Custom "Failed to install llama-cpp-python"
         Write-Host ""
         Write-Host "SOLUTION: Run as Administrator: .\fix_firewall.ps1" -ForegroundColor Yellow
+        exit 1
+    }
+}
 
-# Re-check CUDA after possible installation
+# 8. Check models
 $cudaAvailable = $false
 try {
     $nvccVersion = nvcc --version 2>&1
