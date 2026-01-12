@@ -1,0 +1,32 @@
+{
+  "llama_server_url": "http://localhost:8000",
+  "model": {
+    "path": "/home/kostanich/llama/models/mistral-7b-instruct-v0.3.Q4_K_M.gguf",
+    "context_size": 3072,
+    "temperature": 0.2,
+    "top_p": 0.9,
+    "max_tokens": 1024,
+    "gpu_layer": 40
+  },
+  "extraction": {
+    "template": "REPORT TEMPLATE\nДата: <date>\nЧас: <time>\nЗасіб: <string>\nПозиція: <string>\nЕкіпаж: <string>\nВедучий: <string>\n№ вильоту: <number>\nЦіль: <string>\nКоординати: <mgrs_coordinates> \nБК: <string>\nПідсвітка: <string|null>\nРезультат: <string>\nВідстань: <number|null>\nКоментар: <string|null>\nЗона відповідальності: <string>",
+    "output_schema": {
+      "date": "DD.MM.YYYY",
+      "time": "HH:MM:SS",
+      "device": "string",
+      "location": "string",
+      "crew": "string",
+      "guid": "string",
+      "flight_number": "number",
+      "purpose": "string",
+      "mgrs_insert": "string",
+      "bc": "string",
+      "video": null,
+      "result": "string",
+      "distance": "number",
+      "note": "string",
+      "unit": "string"
+    },
+    "instruction": "You are an information extraction system.\nYour task:\n- Extract structured data from Ukrainian military-style reports.\n- Output ONLY valid JSON.\n- Follow the JSON schema EXACTLY.\n- Do not add explanations, markdown, or extra text.\n- If a field is missing or empty, use null.\n- Do not invent data.\n- Preserve Ukrainian language in values.\n- Normalize time to HH:MM:SS format."
+  }
+}
