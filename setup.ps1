@@ -82,27 +82,95 @@ if (Test-Path "venv") {
 
 # 4. Update pip
 Write-Step "[4/8] Updating pip"
-try {
-    python -m pip install --upgrade pip --no-warn-script-location 2>$null
-    if ($LASTEXITCODE -eq 0) {
-        Write-Success "pip updated"
-    } else {
-        Write-Warning-Custom "Could not update pip (network issue?), continuing..."
+
+# Try with alternative mirrors if default fails
+$pipMirrors = @(
+    @{Name="Default (PyPI)"; Url=""},
+    @{Name="Aliyun (China)"; Url="https://mirrors.aliyun.com/pypi/simple/"},
+    @{Name="Tsinghua (China)"; Url="https://pypi.tuna.tsinghua.edu.cn/simple"}
+)
+
+$pipUpdated = $false
+foreach ($mirror in $pipMirrors) {
+    try {
+        if ($mirror.Url -eq "") {
+            Write-Host "Trying default PyPI..." -ForegroundColor Gray
+            python -m pip install --upgrade pip --no-warn-script-location 2>$null
+        } else {
+            Write-Host "Trying $($mirror.Name) mirror..." -ForegroundColor Gray
+            python -m pip install --upgrade pip -i $($mirror.Url) --no-warn-script-location 2>$null
+        }
+        
+        if ($LASTEXITCODE -eq 0) {
+            Write-Success "pip updated (using $($mirror.Name))"
+            $pipUpdated = $true
+            # Save successful mirror for later use
+            $script:successfulMirror = $mirror.Url
+            break
+        }
+    } catch {
+        continue
     }
-} catch {
+}
+
+if (-not $pipUpdated) {
     Write-Warning-Custom "Could not update pip, continuing with current version..."
+    Write-Host ""
+    Write-Host "NETWORK ISSUE DETECTED!" -ForegroundColor Red
+    Write-Host "Python cannot connect to PyPI. Possible solutions:" -ForegroundColor Yellow
+    Write-Host "1. Run as Administrator: .\fix_firewall.ps1" -ForegroundColor White
+    Write-Host "2. Check Windows Firewall settings" -ForegroundColor White
+    Write-Host "3. Temporarily disable antivirus" -ForegroundColor White
+    Write-Host ""
+    $continue = Read-Host "Continue anyway? (y/n)"
+    if ($continue -notmatch "^[Yy]$") {
+        exit 1
+    }
 }
 
 # 5. Install dependencies
 Write-Step "[5/8] Installing dependencies from requirements.txt"
 if (Test-Path "requirements.txt") {
-    Write-Host "Installing packages... (this may take a while)"
-    try {
-        python -m pip install -r requirements.txt --no-warn-script-location
-        Write-Success "Dependencies installed"
-    } catch {
-        Write-Error-Custom "Failed to install dependencies. Check your internet connection"
-        Write-Host "You can try running: python -m pip install -r requirements.txt"
+    Write-Host "Installing packages... (this may take a while)" -ForegroundColor Gray
+    
+    # Use successful mirror if found, otherwise try alternatives
+    $installSuccess = $false
+    $mirrorsToTry = @()
+    
+    if ($script:successfulMirror) {
+        $mirrorsToTry += @{Name="Previous successful"; Url=$script:successfulMirror}
+    }
+    $mirrorsToTry += @(
+        @{Name="Default (PyPI)"; Url=""},
+        @{Name="Aliyun (China)"; Url="https://mirrors.aliyun.com/pypi/simple/"},
+        @{Name="Tsinghua (China)"; Url="https://pypi.tuna.tsinghua.edu.cn/simple"}
+    )
+    
+    foreach ($mirror in $mirrorsToTry) {
+        try {
+            Write-Host "Trying $($mirror.Name) mirror..." -ForegroundColor Gray
+            if ($mirror.Url -eq "") {
+                python -m pip install -r requirements.txt --no-warn-script-location 2>&1 | Out-Null
+            } else {
+                python -m pip install -r requirements.txt -i $($mirror.Url) --no-warn-script-location 2>&1 | Out-Null
+            }
+            
+            if ($LASTEXITCODE -eq 0) {
+                Write-Success "Dependencies installed (using $($mirror.Name))"
+                $script:successfulMirror = $mirror.Url
+                $installSuccess = $true
+                break
+            }
+        } catch {
+            continue
+        }
+    }
+    
+    if (-not $installSuccess) {
+        Write-Error-Custom "Failed to install dependencies"
+        Write-Host ""
+        Write-Host "SOLUTION: Run as Administrator: .\fix_firewall.ps1" -ForegroundColor Yellow
+        Write-Host "Then run this script again" -ForegroundColor Yellow
         exit 1
     }
 } else {
@@ -168,24 +236,66 @@ if (-not $cudaAvailable) {
                 Remove-Item $cudaInstaller -ErrorAction SilentlyContinue
                 
                 Read-Host "Press Enter to exit"
-                exit 0
-                
-            } catch {
-                Write-Error-Custom "Error downloading/installing CUDA: $_"
-                Write-Warning-Custom "Download and install CUDA manually:"
-                Write-Warning-Custom "https://developer.nvidia.com/cuda-downloads"
+                exit 0 -ForegroundColor Gray
+    
+    $installCmd = "llama-cpp-python[server]"
+    $installSuccess = $false
+    
+    foreach ($mirror in $mirrorsToTry) {
+        try {
+            Write-Host "Trying $($mirror.Name) mirror..." -ForegroundColor Gray
+            if ($mirror.Url -eq "") {
+                python -m pip install $installCmd --upgrade --force-reinstall --no-cache-dir --no-warn-script-location 2>&1 | Out-Null
+            } else {
+                python -m pip install $installCmd --upgrade --force-reinstall --no-cache-dir -i $($mirror.Url) --no-warn-script-location 2>&1 | Out-Null
             }
-        } else {
-            Write-Warning-Custom "Continuing without CUDA (CPU will be used)"
+            
+            if ($LASTEXITCODE -eq 0) {
+                Write-Success "llama-cpp-python[server] installed with CUDA (using $($mirror.Name))"
+                $installSuccess = $true
+                break
+            }
+        } catch {
+            continue
         }
-    } else {
-        Write-Warning-Custom "NVIDIA GPU not found, CPU version will be used"
+    }
+    
+    if (-not $installSuccess) {
+        Write-Warning-Custom "Failed to install with CUDA, trying CPU version..."
+        $cudaAvailable = $false
     }
 }
 
-# 7. Install llama-cpp-python[server]
-Write-Step "[7/8] Installing llama-cpp-python[server]"
-Write-Warning-Custom "This may take several minutes..."
+if (-not $cudaAvailable) {
+    Write-Warning-Custom "Installing CPU version"
+    Write-Host "Installing llama-cpp-python... (this may take a few minutes)" -ForegroundColor Gray
+    
+    $installCmd = "llama-cpp-python[server]"
+    $installSuccess = $false
+    
+    foreach ($mirror in $mirrorsToTry) {
+        try {
+            Write-Host "Trying $($mirror.Name) mirror..." -ForegroundColor Gray
+            if ($mirror.Url -eq "") {
+                python -m pip install $installCmd --no-warn-script-location 2>&1 | Out-Null
+            } else {
+                python -m pip install $installCmd -i $($mirror.Url) --no-warn-script-location 2>&1 | Out-Null
+            }
+            
+            if ($LASTEXITCODE -eq 0) {
+                Write-Success "llama-cpp-python[server] installed (CPU, using $($mirror.Name))"
+                $installSuccess = $true
+                break
+            }
+        } catch {
+            continue
+        }
+    }
+    
+    if (-not $installSuccess) {
+        Write-Error-Custom "Failed to install llama-cpp-python"
+        Write-Host ""
+        Write-Host "SOLUTION: Run as Administrator: .\fix_firewall.ps1" -ForegroundColor Yellow
 
 # Re-check CUDA after possible installation
 $cudaAvailable = $false
