@@ -14,10 +14,20 @@ CYAN='\033[0;36m'
 NC='\033[0m'
 
 echo -e "${CYAN}"
-echo "========================================"
-echo "  LLM Proxy Server - Setup Environment  "
-echo "========================================"
+echo "=============================================="
+echo "  LLM Proxy Server - Linux/WSL Setup        "
+echo "=============================================="
 echo -e "${NC}"
+
+# Check if running in WSL or native Linux
+if grep -qi microsoft /proc/version 2>/dev/null; then
+    echo -e "${GREEN}[✓] Running in WSL (Windows Subsystem for Linux)${NC}"
+elif [ -f /proc/version ]; then
+    echo -e "${GREEN}[✓] Running in Linux${NC}"
+else
+    echo -e "${YELLOW}[!] Unknown environment${NC}"
+fi
+echo ""
 
 # Helper functions
 command_exists() {
@@ -171,30 +181,30 @@ if [ "$PIP_UPDATED" = false ]; then
     warning "Could not update pip, continuing with current version..."
 fi
 
-# 5. Install dependencies
-step "[5/8] Installing dependencies from requirements.txt"
+# 5. Install basic dependencies
+step "[5/8] Installing basic dependencies"
 if [ -f "requirements.txt" ]; then
-    echo "Installing packages... (this may take a while)"
+    echo "Installing packages from requirements.txt..."
     
     INSTALL_SUCCESS=false
     
     for MIRROR in "${MIRRORS[@]}"; do
         if [ -z "$MIRROR" ]; then
             echo "Trying default PyPI..."
-            python -m pip install -r requirements.txt >/dev/null 2>&1 && INSTALL_SUCCESS=true
+            python -m pip install -r requirements.txt && INSTALL_SUCCESS=true
         else
             echo "Trying mirror: $MIRROR"
-            python -m pip install -r requirements.txt -i "$MIRROR" >/dev/null 2>&1 && INSTALL_SUCCESS=true && SUCCESSFUL_MIRROR="$MIRROR"
+            python -m pip install -r requirements.txt -i "$MIRROR" && INSTALL_SUCCESS=true && SUCCESSFUL_MIRROR="$MIRROR"
         fi
         
         if [ "$INSTALL_SUCCESS" = true ]; then
-            success "Dependencies installed"
+            success "Basic dependencies installed"
             break
         fi
     done
     
     if [ "$INSTALL_SUCCESS" = false ]; then
-        error "Failed to install dependencies"
+        error "Failed to install basic dependencies"
         echo "Try manually: python -m pip install -r requirements.txt"
         exit 1
     fi
@@ -203,108 +213,60 @@ else
     exit 1
 fi
 
-# 6. Install llama-cpp-python[server]
-step "[6/8] Installing llama-cpp-python[server]"
-
-# First, test network connectivity from WSL
-echo "Testing network from WSL..."
-if ! curl -s --connect-timeout 5 https://pypi.org > /dev/null 2>&1; then
-    error "Cannot connect to PyPI from WSL"
-    echo ""
-    echo "Network troubleshooting:"
-    echo "  1. Check WSL network: ping google.com"
-    echo "  2. Check DNS: cat /etc/resolv.conf"
-    echo "  3. Try restarting WSL: wsl --shutdown (from Windows)"
-    echo "  4. Check Windows firewall/antivirus"
-    echo ""
-    echo "Try manually:"
-    echo "  python -m pip install llama-cpp-python[server] -vvv"
-    echo ""
-    exit 1
-fi
-success "Network connection OK"
-
-echo "This may take several minutes..."
+# 6. Install llama-cpp-python
+step "[6/8] Installing llama-cpp-python (this may take 5-10 minutes)"
 
 # Check for CUDA
 CUDA_AVAILABLE=false
 if command_exists nvcc; then
-    warning "CUDA detected, installing with GPU support"
+    CUDA_VERSION=$(nvcc --version | grep "release" | awk '{print $5}' | cut -d',' -f1)
+    success "CUDA detected: $CUDA_VERSION"
     CUDA_AVAILABLE=true
+    export CMAKE_ARGS="-DGGML_CUDA=on"
+else
+    warning "CUDA not detected, will use CPU version"
 fi
 
+echo "Installing llama-cpp-python..."
 if [ "$CUDA_AVAILABLE" = true ]; then
-    success "CUDA available, installing with GPU support"
-    export CMAKE_ARGS="-DLLAMA_CUBLAS=on"
     echo "Building with CUDA support... (this will take 5-10 minutes)"
-    echo "Showing output (this may be verbose)..."
-    echo ""
-    
-    INSTALL_SUCCESS=false
-    for MIRROR in "${MIRRORS[@]}"; do
-        if [ -z "$MIRROR" ]; then
-            echo "Trying default PyPI..."
-            python -m pip install llama-cpp-python[server] --upgrade --force-reinstall --no-cache-dir && INSTALL_SUCCESS=true
-        else
-            echo "Trying mirror: $MIRROR"
-            python -m pip install llama-cpp-python[server] --upgrade --force-reinstall --no-cache-dir -i "$MIRROR" && INSTALL_SUCCESS=true
-        fi
-        
-        if [ "$INSTALL_SUCCESS" = true ]; then
-            success "llama-cpp-python[server] installed with CUDA"
-            break
-        fi
-    done
-    
-    if [ "$INSTALL_SUCCESS" = false ]; then
-        warning "Failed to install with CUDA, trying CPU version..."
-        CUDA_AVAILABLE=false
-    fi
 fi
 
-if [ "$CUDA_AVAILABLE" = false ]; then
-    warning "Installing CPU version"
-    echo "Installing llama-cpp-python... (this may take a few minutes)"
-    echo "Showing output..."
-    echo ""
-    
-    INSTALL_SUCCESS=false
-    LAST_ERROR=""
-    
-    for MIRROR in "${MIRRORS[@]}"; do
-        if [ -z "$MIRROR" ]; then
-            echo "Trying default PyPI..."
-            if python -m pip install llama-cpp-python[server] 2>&1 | tee /tmp/pip_install.log; then
-                INSTALL_SUCCESS=true
-            else
-                LAST_ERROR=$(tail -20 /tmp/pip_install.log)
-            fi
-        else
-            echo "Trying mirror: $MIRROR"
-            if python -m pip install llama-cpp-python[server] -i "$MIRROR" 2>&1 | tee /tmp/pip_install.log; then
-                INSTALL_SUCCESS=true
-            else
-                LAST_ERROR=$(tail -20 /tmp/pip_install.log)
-            fi
-        fi
-        
-        if [ "$INSTALL_SUCCESS" = true ]; then
-            success "llama-cpp-python[server] installed (CPU)"
-            break
-        fi
-    done
-    
-    if [ "$INSTALL_SUCCESS" = false ]; then
-        error "Failed to install llama-cpp-python"
-        echo ""
-        echo "Last error:"
-        echo "$LAST_ERROR"
-        echo ""
-        echo "Try manually with verbose output:"
-        echo "  python -m pip install llama-cpp-python[server] -vvv"
-        echo ""
-        exit 1
+INSTALL_SUCCESS=false
+
+for MIRROR in "${MIRRORS[@]}"; do
+    if [ -z "$MIRROR" ]; then
+        echo "Trying default PyPI..."
+        python -m pip install llama-cpp-python && INSTALL_SUCCESS=true
+    else
+        echo "Trying mirror: $MIRROR"
+        python -m pip install llama-cpp-python -i "$MIRROR" && INSTALL_SUCCESS=true
     fi
+    
+    if [ "$INSTALL_SUCCESS" = true ]; then
+        if [ "$CUDA_AVAILABLE" = true ]; then
+            success "llama-cpp-python installed with CUDA support"
+        else
+            success "llama-cpp-python installed (CPU version)"
+        fi
+        break
+    fi
+done
+
+if [ "$INSTALL_SUCCESS" = false ]; then
+    error "Failed to install llama-cpp-python"
+    echo "Try manually: python -m pip install llama-cpp-python"
+    exit 1
+fi
+
+# Verify llama-cpp-python installation
+echo "Verifying llama-cpp-python installation..."
+if python -c "import llama_cpp" 2>/dev/null; then
+    success "llama-cpp-python is properly installed"
+else
+    error "llama-cpp-python installation verification failed"
+    echo "Try reinstalling: python -m pip install --force-reinstall llama-cpp-python[server]"
+    exit 1
 fi
 
 # 7. Set execute permissions
