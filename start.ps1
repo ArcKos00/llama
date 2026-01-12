@@ -37,7 +37,7 @@ $script:proxyProcess = $null
 # Функція очищення
 function Stop-Servers {
     Write-Host ""
-    Write-ColorOutput "⚠ Зупинка серверів..." "Yellow"
+    Write-ColorOutput "Зупинка серверів..." "Yellow"
     
     if ($script:proxyProcess -and !$script:proxyProcess.HasExited) {
         Write-Host "Зупинка proxy server (PID: $($script:proxyProcess.Id))"
@@ -49,7 +49,7 @@ function Stop-Servers {
         Stop-Process -Id $script:llamaProcess.Id -Force -ErrorAction SilentlyContinue
     }
     
-    Write-ColorOutput "✓ Сервери зупинено" "Green"
+    Write-ColorOutput "Сервери зупинено" "Green"
 }
 
 # Обробник Ctrl+C
@@ -59,15 +59,15 @@ try {
     # Перевірка віртуального середовища
     $venvPython = ".\.venv\Scripts\python.exe"
     if (-not (Test-Path $venvPython)) {
-        Write-ColorOutput "⚠ Віртуальне середовище .venv не знайдено" "Yellow"
-        Write-ColorOutput "  Запустіть: .\setup_python311.ps1" "Yellow"
+        Write-ColorOutput "Віртуальне середовище .venv не знайдено" "Yellow"
+        Write-ColorOutput "Запустіть: .\setup_python311.ps1" "Yellow"
         $venvPython = "python"
     } else {
-        Write-ColorOutput "✓ Використовується віртуальне середовище .venv" "Green"
+        Write-ColorOutput "Використовується віртуальне середовище .venv" "Green"
     }
 
     # Запуск llama-cpp-python server
-    Write-ColorOutput "`n▶ [1/2] Запуск llama-cpp-python server на ${LLAMA_HOST}:${LLAMA_PORT}..." "Cyan"
+    Write-ColorOutput "`n[1/2] Запуск llama-cpp-python server на ${LLAMA_HOST}:${LLAMA_PORT}..." "Cyan"
     
     $llamaArgs = @(
         "-m", "llama_cpp.server",
@@ -80,10 +80,10 @@ try {
     )
     
     $script:llamaProcess = Start-Process -FilePath $venvPython -ArgumentList $llamaArgs -NoNewWindow -PassThru
-    Write-ColorOutput "✓ Llama server запущено (PID: $($script:llamaProcess.Id))" "Green"
+    Write-ColorOutput "Llama server запущено (PID: $($script:llamaProcess.Id))" "Green"
 
     # Очікування готовності llama server
-    Write-ColorOutput "⚠ Очікування готовності llama server (до 60 секунд)..." "Yellow"
+    Write-ColorOutput "Очікування готовності llama server (до 60 секунд)..." "Yellow"
     $maxAttempts = 30
     $attempt = 0
     $llamaReady = $false
@@ -92,7 +92,7 @@ try {
         try {
             $response = Invoke-WebRequest -Uri "http://${LLAMA_HOST}:${LLAMA_PORT}/health" -TimeoutSec 2 -ErrorAction SilentlyContinue
             if ($response.StatusCode -eq 200) {
-                Write-ColorOutput "✓ Llama server готовий" "Green"
+                Write-ColorOutput "Llama server готовий" "Green"
                 $llamaReady = $true
                 break
             }
@@ -104,13 +104,13 @@ try {
     }
     
     if (-not $llamaReady) {
-        Write-ColorOutput "✗ Llama server не запустився за відведений час" "Red"
+        Write-ColorOutput "Llama server не запустився за відведений час" "Red"
         Stop-Servers
         exit 1
     }
 
     # Запуск FastAPI proxy server
-    Write-ColorOutput "`n▶ [2/2] Запуск FastAPI proxy server на ${PROXY_HOST}:${PROXY_PORT}..." "Cyan"
+    Write-ColorOutput "`n[2/2] Запуск FastAPI proxy server на ${PROXY_HOST}:${PROXY_PORT}..." "Cyan"
     
     $proxyArgs = @(
         "app_server:app",
@@ -119,10 +119,10 @@ try {
     )
     
     $script:proxyProcess = Start-Process -FilePath "uvicorn" -ArgumentList $proxyArgs -NoNewWindow -PassThru
-    Write-ColorOutput "✓ Proxy server запущено (PID: $($script:proxyProcess.Id))" "Green"
+    Write-ColorOutput "Proxy server запущено (PID: $($script:proxyProcess.Id))" "Green"
 
     # Очікування готовності proxy server
-    Write-ColorOutput "⚠ Очікування готовності proxy server..." "Yellow"
+    Write-ColorOutput "Очікування готовності proxy server..." "Yellow"
     Start-Sleep -Seconds 3
     
     $proxyAttempts = 15
@@ -133,7 +133,7 @@ try {
         try {
             $response = Invoke-WebRequest -Uri "http://localhost:${PROXY_PORT}/docs" -TimeoutSec 2 -ErrorAction SilentlyContinue
             if ($response.StatusCode -eq 200) {
-                Write-ColorOutput "✓ Proxy server готовий" "Green"
+                Write-ColorOutput "Proxy server готовий" "Green"
                 $proxyReady = $true
                 break
             }
@@ -145,7 +145,7 @@ try {
     }
     
     if (-not $proxyReady) {
-        Write-ColorOutput "⚠ Proxy server може бути ще не готовий" "Yellow"
+        Write-ColorOutput "Proxy server може бути ще не готовий" "Yellow"
     }
 
     # Виведення інформації
@@ -154,24 +154,24 @@ try {
     Write-ColorOutput "║         Сервери успішно запущено!              ║" "Green"
     Write-ColorOutput "╚════════════════════════════════════════════════╝" "Green"
     Write-Host ""
-    Write-Host "📊 Llama server:  http://${LLAMA_HOST}:${LLAMA_PORT}" -ForegroundColor Cyan
-    Write-Host "🚀 Proxy server:  http://${PROXY_HOST}:${PROXY_PORT}" -ForegroundColor Cyan
-    Write-Host "📖 API Docs:      http://localhost:${PROXY_PORT}/docs" -ForegroundColor Cyan
+    Write-Host "Llama server:  http://${LLAMA_HOST}:${LLAMA_PORT}" -ForegroundColor Cyan
+    Write-Host "Proxy server:  http://${PROXY_HOST}:${PROXY_PORT}" -ForegroundColor Cyan
+    Write-Host "API Docs:      http://localhost:${PROXY_PORT}/docs" -ForegroundColor Cyan
     Write-Host ""
-    Write-ColorOutput "⚠ Натисніть Ctrl+C для зупинки серверів" "Yellow"
+    Write-ColorOutput "Натисніть Ctrl+C для зупинки серверів" "Yellow"
     Write-Host ""
 
     # Очікування завершення
     while ($true) {
         if ($script:proxyProcess.HasExited -or $script:llamaProcess.HasExited) {
-            Write-ColorOutput "⚠ Один з серверів зупинився" "Yellow"
+            Write-ColorOutput "Один з серверів зупинився" "Yellow"
             break
         }
         Start-Sleep -Seconds 1
     }
 
 } catch {
-    Write-ColorOutput "✗ Помилка: $_" "Red"
+    Write-ColorOutput "Помилка: $_" "Red"
 } finally {
     Stop-Servers
 }

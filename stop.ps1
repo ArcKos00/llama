@@ -9,7 +9,7 @@ function Write-ColorOutput {
     Write-Host $Message -ForegroundColor $Color
 }
 
-Write-ColorOutput "⚠ Зупинка серверів..." "Yellow"
+Write-ColorOutput "Зупинка серверів..." "Yellow"
 
 $stoppedCount = 0
 
@@ -82,7 +82,7 @@ foreach ($proc in $pythonProcesses) {
 }
 
 if ($stoppedCount -gt 0) {
-    Write-ColorOutput "✓ Зупинено $stoppedCount процес(ів)" "Green"
+    Write-ColorOutput "Зупинено $stoppedCount процес(ів)" "Green"
 } else {
-    Write-ColorOutput "⚠ Сервери не запущені" "Yellow"
+    Write-ColorOutput "Сервери не запущені" "Yellow"
 }

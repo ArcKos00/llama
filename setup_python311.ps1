@@ -22,22 +22,22 @@ function Write-ColorOutput {
 
 function Write-Step {
     param([string]$Message)
-    Write-ColorOutput "`n▶ $Message" "Cyan"
+    Write-ColorOutput "`n> $Message" "Cyan"
 }
 
 function Write-Success {
     param([string]$Message)
-    Write-ColorOutput "✓ $Message" "Green"
+    Write-ColorOutput "[OK] $Message" "Green"
 }
 
 function Write-Error-Custom {
     param([string]$Message)
-    Write-ColorOutput "✗ $Message" "Red"
+    Write-ColorOutput "[ERROR] $Message" "Red"
 }
 
 function Write-Warning-Custom {
     param([string]$Message)
-    Write-ColorOutput "⚠ $Message" "Yellow"
+    Write-ColorOutput "[WARNING] $Message" "Yellow"
 }
 
 function Get-PythonVersion {

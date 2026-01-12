@@ -1,7 +1,7 @@
 {
   "llama_server_url": "http://localhost:8000",
   "model": {
-    "path": "/home/kostanich/llama/models/mistral-7b-instruct-v0.3.Q4_K_M.gguf",
+    "path": "./models/mistral-7b-instruct-v0.3.Q4_K_M.gguf",
     "context_size": 3072,
     "temperature": 0.2,
     "top_p": 0.9,
