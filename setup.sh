@@ -209,22 +209,151 @@ else
 fi
 
 # 6. Install llama-cpp-python
-step "[6/8] Installing llama-cpp-python (this may take 5-10 minutes)"
+step "[6/8] Installing llama-cpp-python"
 
-# Check for CUDA
+# Check for NVIDIA GPU
+GPU_AVAILABLE=false
 CUDA_AVAILABLE=false
-if command_exists nvcc; then
-    CUDA_VERSION=$(nvcc --version | grep "release" | awk '{print $5}' | cut -d',' -f1)
-    success "CUDA detected: $CUDA_VERSION"
-    CUDA_AVAILABLE=true
-    export CMAKE_ARGS="-DGGML_CUDA=on"
+
+echo "Checking for NVIDIA GPU..."
+if command_exists nvidia-smi; then
+    GPU_INFO=$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -n 1)
+    if [ -n "$GPU_INFO" ]; then
+        success "NVIDIA GPU detected: $GPU_INFO"
+        GPU_AVAILABLE=true
+    fi
+elif lspci 2>/dev/null | grep -qi nvidia; then
+    GPU_INFO=$(lspci | grep -i nvidia | head -n 1)
+    success "NVIDIA GPU detected: $GPU_INFO"
+    GPU_AVAILABLE=true
 else
-    warning "CUDA not detected, will use CPU version"
+    warning "No NVIDIA GPU detected, will use CPU version"
 fi
 
+# If GPU available, try to setup CUDA
+if [ "$GPU_AVAILABLE" = true ]; then
+    echo ""
+    echo -e "${CYAN}NVIDIA GPU detected! Checking CUDA setup...${NC}"
+    
+    if command_exists nvcc; then
+        CUDA_VERSION=$(nvcc --version | grep "release" | awk '{print $5}' | cut -d',' -f1)
+        success "CUDA Toolkit already installed: $CUDA_VERSION"
+        CUDA_AVAILABLE=true
+        export CMAKE_ARGS="-DGGML_CUDA=on"
+    else
+        warning "CUDA Toolkit not installed"
+        echo -e "${YELLOW}Install CUDA Toolkit to enable GPU acceleration? (y/n): ${NC}"
+        read -r INSTALL_CUDA
+        
+        if [[ $INSTALL_CUDA =~ ^[Yy]$ ]]; then
+            step "Installing CUDA Toolkit"
+            
+            # Detect WSL vs native Linux
+            if grep -qi microsoft /proc/version 2>/dev/null; then
+                echo "Installing CUDA for WSL..."
+                
+                # WSL-specific CUDA installation
+                if command_exists apt-get; then
+                    # Remove old CUDA GPG key if exists
+                    sudo apt-key del 7fa2af80 2>/dev/null || true
+                    
+                    # Install CUDA keyring
+                    echo "Downloading CUDA keyring..."
+                    wget -q https://developer.download.nvidia.com/compute/cuda/repos/wsl-ubuntu/x86_64/cuda-keyring_1.1-1_all.deb
+                    sudo dpkg -i cuda-keyring_1.1-1_all.deb
+                    rm cuda-keyring_1.1-1_all.deb
+                    
+                    # Update and install CUDA toolkit
+                    echo "Installing CUDA Toolkit (this may take 10-15 minutes)..."
+                    sudo apt-get update
+                    sudo apt-get install -y cuda-toolkit-12-6 || sudo apt-get install -y cuda-toolkit
+                    
+                    # Add to PATH
+                    export PATH="/usr/local/cuda/bin:$PATH"
+                    export LD_LIBRARY_PATH="/usr/local/cuda/lib64:$LD_LIBRARY_PATH"
+                    
+                    # Make permanent
+                    if ! grep -q "/usr/local/cuda/bin" ~/.bashrc; then
+                        echo 'export PATH="/usr/local/cuda/bin:$PATH"' >> ~/.bashrc
+                        echo 'export LD_LIBRARY_PATH="/usr/local/cuda/lib64:$LD_LIBRARY_PATH"' >> ~/.bashrc
+                    fi
+                    
+                    if command_exists nvcc; then
+                        CUDA_VERSION=$(nvcc --version | grep "release" | awk '{print $5}' | cut -d',' -f1)
+                        success "CUDA Toolkit installed: $CUDA_VERSION"
+                        CUDA_AVAILABLE=true
+                        export CMAKE_ARGS="-DGGML_CUDA=on"
+                    else
+                        warning "CUDA installed but nvcc not found in PATH"
+                        echo "You may need to restart the terminal and run setup.sh again"
+                        echo -e "${YELLOW}Continue with CPU version for now? (y/n): ${NC}"
+                        read -r USE_CPU
+                        if [[ ! $USE_CPU =~ ^[Yy]$ ]]; then
+                            exit 1
+                        fi
+                    fi
+                else
+                    error "apt-get not found. Cannot install CUDA automatically"
+                    echo -e "${YELLOW}Continue with CPU version? (y/n): ${NC}"
+                    read -r USE_CPU
+                    if [[ ! $USE_CPU =~ ^[Yy]$ ]]; then
+                        exit 1
+                    fi
+                fi
+            else
+                echo "Installing CUDA for native Linux..."
+                
+                if command_exists apt-get; then
+                    # Ubuntu/Debian
+                    echo "Downloading CUDA keyring..."
+                    wget -q https://developer.download.nvidia.com/compute/cuda/repos/ubuntu$(lsb_release -rs | tr -d '.')/x86_64/cuda-keyring_1.1-1_all.deb
+                    sudo dpkg -i cuda-keyring_1.1-1_all.deb
+                    rm cuda-keyring_1.1-1_all.deb
+                    
+                    echo "Installing CUDA Toolkit (this may take 10-15 minutes)..."
+                    sudo apt-get update
+                    sudo apt-get install -y cuda-toolkit-12-6 || sudo apt-get install -y cuda-toolkit
+                    
+                    export PATH="/usr/local/cuda/bin:$PATH"
+                    export LD_LIBRARY_PATH="/usr/local/cuda/lib64:$LD_LIBRARY_PATH"
+                    
+                    if ! grep -q "/usr/local/cuda/bin" ~/.bashrc; then
+                        echo 'export PATH="/usr/local/cuda/bin:$PATH"' >> ~/.bashrc
+                        echo 'export LD_LIBRARY_PATH="/usr/local/cuda/lib64:$LD_LIBRARY_PATH"' >> ~/.bashrc
+                    fi
+                    
+                    if command_exists nvcc; then
+                        CUDA_VERSION=$(nvcc --version | grep "release" | awk '{print $5}' | cut -d',' -f1)
+                        success "CUDA Toolkit installed: $CUDA_VERSION"
+                        CUDA_AVAILABLE=true
+                        export CMAKE_ARGS="-DGGML_CUDA=on"
+                    else
+                        warning "CUDA installed but nvcc not found"
+                        echo "Restart terminal and run setup.sh again"
+                        exit 0
+                    fi
+                else
+                    error "Cannot install CUDA automatically on this system"
+                    echo "Manual installation: https://developer.nvidia.com/cuda-downloads"
+                    echo -e "${YELLOW}Continue with CPU version? (y/n): ${NC}"
+                    read -r USE_CPU
+                    if [[ ! $USE_CPU =~ ^[Yy]$ ]]; then
+                        exit 1
+                    fi
+                fi
+            fi
+        else
+            warning "Continuing with CPU version (GPU will not be used)"
+        fi
+    fi
+fi
+
+echo ""
 echo "Installing llama-cpp-python..."
 if [ "$CUDA_AVAILABLE" = true ]; then
-    echo "Building with CUDA support... (this will take 5-10 minutes)"
+    echo -e "${GREEN}Building with CUDA support (this may take 5-10 minutes)...${NC}"
+else
+    echo "Building CPU version..."
 fi
 
 INSTALL_SUCCESS=false
