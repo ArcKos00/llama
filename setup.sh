@@ -393,15 +393,117 @@ else
     exit 1
 fi
 
-# 7. Set execute permissions
-step "[7/8] Setting execute permissions"
+# 7. Model Selection
+step "[7/9] Model Selection"
+echo ""
+echo -e "${CYAN}Choose a model to use:${NC}"
+echo "  1) Llama 3"
+echo "  2) Mistral"
+echo "  3) Phi"
+echo "  4) Skip (use existing configuration)"
+echo ""
+echo -n "Enter choice [1-4]: "
+read -r MODEL_CHOICE
+
+MODEL_NAME=""
+MODEL_URL=""
+MODEL_FILE=""
+
+case $MODEL_CHOICE in
+    1)
+        MODEL_NAME="llama3"
+        MODEL_FILE="Meta-Llama-3-8B-Instruct.Q4_K_M.gguf"
+        MODEL_URL="https://huggingface.co/QuantFactory/Meta-Llama-3-8B-Instruct-GGUF/resolve/main/Meta-Llama-3-8B-Instruct.Q4_K_M.gguf"
+        success "Selected: Llama 3"
+        ;;
+    2)
+        MODEL_NAME="mistral"
+        MODEL_FILE="mistral-7b-instruct-v0.2.Q4_K_M.gguf"
+        MODEL_URL="https://huggingface.co/TheBloke/Mistral-7B-Instruct-v0.2-GGUF/resolve/main/mistral-7b-instruct-v0.2.Q4_K_M.gguf"
+        success "Selected: Mistral"
+        ;;
+    3)
+        MODEL_NAME="phi"
+        MODEL_FILE="phi-2.Q4_K_M.gguf"
+        MODEL_URL="https://huggingface.co/TheBloke/phi-2-GGUF/resolve/main/phi-2.Q4_K_M.gguf"
+        success "Selected: Phi"
+        ;;
+    4)
+        success "Skipping model selection"
+        MODEL_NAME=""
+        ;;
+    *)
+        warning "Invalid choice, skipping model selection"
+        MODEL_NAME=""
+        ;;
+esac
+
+# Download model if selected
+if [ -n "$MODEL_NAME" ]; then
+    MODELS_DIR="$SCRIPT_DIR/models"
+    mkdir -p "$MODELS_DIR"
+    MODEL_PATH="$MODELS_DIR/$MODEL_FILE"
+    
+    if [ -f "$MODEL_PATH" ]; then
+        success "Model already exists: $MODEL_FILE"
+    else
+        echo ""
+        echo -e "${CYAN}Download $MODEL_NAME model? (approximately 4-5GB)${NC}"
+        echo -n "Download now? [y/n]: "
+        read -r DOWNLOAD_MODEL
+        
+        if [[ $DOWNLOAD_MODEL =~ ^[Yy]$ ]]; then
+            step "Downloading $MODEL_NAME model"
+            echo "This may take several minutes depending on your connection..."
+            
+            if command_exists wget; then
+                wget -O "$MODEL_PATH" "$MODEL_URL" && success "Model downloaded: $MODEL_FILE"
+            elif command_exists curl; then
+                curl -L -o "$MODEL_PATH" "$MODEL_URL" && success "Model downloaded: $MODEL_FILE"
+            else
+                error "Neither wget nor curl found. Please install wget or curl"
+                echo "You can download manually from: $MODEL_URL"
+                echo "Save to: $MODEL_PATH"
+            fi
+        else
+            warning "Model download skipped"
+            echo "Download manually from: $MODEL_URL"
+            echo "Save to: $MODEL_PATH"
+        fi
+    fi
+    
+    # Update config.json
+    if [ -f "config.json" ] && [ -f "$MODEL_PATH" ]; then
+        echo ""
+        echo -n "Update config.json to use $MODEL_FILE? [y/n]: "
+        read -r UPDATE_CONFIG
+        
+        if [[ $UPDATE_CONFIG =~ ^[Yy]$ ]]; then
+            # Create backup
+            cp config.json config.json.backup
+            
+            # Update model path in config.json
+            python -c "
+import json
+with open('config.json', 'r') as f:
+    config = json.load(f)
+config['model']['path'] = '$MODEL_PATH'
+with open('config.json', 'w') as f:
+    json.dump(config, f, indent=4)
+" 2>/dev/null && success "config.json updated" || warning "Could not update config.json"
+        fi
+    fi
+fi
+
+# 8. Set execute permissions
+step "[8/9] Setting execute permissions"
 chmod +x start.sh 2>/dev/null && success "start.sh executable" || warning "start.sh not found"
 chmod +x stop.sh 2>/dev/null && success "stop.sh executable" || warning "stop.sh not found"
 chmod +x start_llama_server.sh 2>/dev/null && success "start_llama_server.sh executable" || warning "start_llama_server.sh not found"
 chmod +x start_proxy_server.sh 2>/dev/null && success "start_proxy_server.sh executable" || warning "start_proxy_server.sh not found"
 
-# 8. Check models
-step "[8/8] Checking models"
+# 9. Check models
+step "[9/9] Checking models"
 MODELS_DIR="./models"
 if [ ! -d "$MODELS_DIR" ]; then
     warning "models/ directory not found, creating..."

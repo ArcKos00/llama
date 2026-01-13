@@ -21,14 +21,24 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
-# Конфігурація
-MODEL_PATH="/home/kostanich/llama/models/mistral-7b-instruct-v0.3.Q4_K_M.gguf"
-LLAMA_HOST="127.0.0.1"
-LLAMA_PORT="8000"
-PROXY_HOST="0.0.0.0"
-PROXY_PORT="8080"
-N_GPU_LAYERS="40"
-N_CTX="4096"
+# Конфігурація з config.json або значення за замовчуванням
+if [ -f "config.json" ]; then
+    MODEL_PATH=$(python3 -c "import json; print(json.load(open('config.json'))['model']['path'])" 2>/dev/null || echo "")
+    LLAMA_HOST=$(python3 -c "import json; print(json.load(open('config.json'))['servers']['llama_server']['host'])" 2>/dev/null || echo "127.0.0.1")
+    LLAMA_PORT=$(python3 -c "import json; print(json.load(open('config.json'))['servers']['llama_server']['port'])" 2>/dev/null || echo "8000")
+    PROXY_HOST=$(python3 -c "import json; print(json.load(open('config.json'))['servers']['proxy_server']['host'])" 2>/dev/null || echo "0.0.0.0")
+    PROXY_PORT=$(python3 -c "import json; print(json.load(open('config.json'))['servers']['proxy_server']['port'])" 2>/dev/null || echo "8080")
+    N_GPU_LAYERS=$(python3 -c "import json; print(json.load(open('config.json'))['model']['n_gpu_layers'])" 2>/dev/null || echo "40")
+    N_CTX=$(python3 -c "import json; print(json.load(open('config.json'))['model']['n_ctx'])" 2>/dev/null || echo "4096")
+else
+    echo -e "${RED}Помилка: config.json не знайдено${NC}"
+    exit 1
+fi
+
+# Перетворення відносного шляху в абсолютний
+if [[ "$MODEL_PATH" != /* ]]; then
+    MODEL_PATH="$SCRIPT_DIR/$MODEL_PATH"
+fi
 
 # PID файли для відстеження процесів
 LLAMA_PID_FILE="/tmp/llama_server.pid"

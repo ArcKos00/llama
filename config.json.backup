@@ -1,7 +1,7 @@
 {
     "llama_server_url": "http://localhost:8000",
     "model": {
-        "path": "/home/kostanich/llama/models/mistral-7b-instruct-v0.2.Q4_K_M.gguf",
+        "path": "./models/mistral-7b-instruct-v0.2.Q4_K_M.gguf",
         "context_size": 3072,
         "temperature": 0.2,
         "top_p": 0.9,
@@ -9,7 +9,7 @@
         "gpu_layer": 40
     },
     "extraction": {
-        "template": "REPORT TEMPLATE\nДата: <date>\nЧас: <time>\nЗасіб: <string>\nПозиція: <string>\nЕкіпаж: <string>\nВедучий: <string>\n№ вильоту: <number>\nЦіль: <string>\nКоординати: <mgrs_coordinates> \nБК: <string>\nПідсвітка: <string|null>\nРезультат: <string>\nВідстань: <number|null>\nКоментар: <string|null>\nЗона відповідальності: <string>\nРайон завдання(location_name): <string|null>\n",
+        "template": ""REPORT TEMPLATE\nДата: <date>\nЧас: <time>\nЗасіб: <string>\nПозиція: <string>\nЕкіпаж: <string>\nВедучий: <string>\n№ вильоту: <number>\nЦіль: <string>\nКоординати: <mgrs_coordinates> \nБК: <string>\nПідсвітка: <string|null>\nРезультат: <string>\nВідстань: <number|null>\nКоментар: <string|null>\nЗона відповідальності: <string>\nРайон завдання(location_name): <string|null>\n",
         "output_schema": {
             "date": "DD.MM.YYYY",
             "time": "HH:MM:SS",
