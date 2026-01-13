@@ -9,7 +9,7 @@
     "gpu_layer": 40
   },
   "extraction": {
-    "template": "REPORT TEMPLATE\nДата: <date>\nЧас: <time>\nЗасіб: <string>\nПозиція: <string>\nЕкіпаж: <string>\nВедучий: <string>\n№ вильоту: <number>\nЦіль: <string>\nКоординати: <mgrs_coordinates> \nБК: <string>\nПідсвітка: <string|null>\nРезультат: <string>\nВідстань: <number|null>\nКоментар: <string|null>\nЗона відповідальності: <string>",
+    "template": "REPORT TEMPLATE\nДата: <date>\nЧас: <time>\nЗасіб: <string>\nПозиція: <string>\nЕкіпаж: <string>\nВедучий: <string>\n№ вильоту: <number>\nЦіль: <string>\nКоординати: <mgrs_coordinates> \nБК: <string>\nПідсвітка: <string|null>\nРезультат: <string>\nВідстань: <number|null>\nКоментар: <string|null>\nЗона відповідальності: <string>\nРайон завдання(location_name): <string|null>\n",
     "output_schema": {
       "date": "DD.MM.YYYY",
       "time": "HH:MM:SS",
@@ -20,7 +20,8 @@
       "flight_number": "number",
       "purpose": "string",
       "mgrs_insert": "string",
-      "bc": "string",
+      "bc": "string|[{'bc_name': 'string', 'bc_count': 'number'}]",
+      "location_name": "string",
       "video": null,
       "result": "string",
       "distance": "number",

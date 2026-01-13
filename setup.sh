@@ -108,9 +108,7 @@ else
 fi
 
 if [ "$NEED_INSTALL" = true ]; then
-    read -p "Install Python 3.11 automatically? (y/n): " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
+    success "Install Python 3.11 automatically? (y/n): "
         install_python311
         if command_exists python3.11; then
             PYTHON_CMD="python3.11"
@@ -120,10 +118,7 @@ if [ "$NEED_INSTALL" = true ]; then
             error "Python 3.11 installation failed"
             exit 1
         fi
-    else
-        error "Python 3.11 is required. Install from: https://www.python.org/downloads/"
-        exit 1
-    fi
+
 fi
 
 # 2. Check pip

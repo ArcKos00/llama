@@ -6,6 +6,15 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
+# Activate virtual environment if it exists
+if [ -f ".venv/bin/activate" ]; then
+    source .venv/bin/activate
+    echo -e "${GREEN}Virtual environment activated${NC}"
+elif [ -f "venv/bin/activate" ]; then
+    source venv/bin/activate
+    echo -e "${GREEN}Virtual environment activated${NC}"
+fi
+
 # Кольори для виводу
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -67,8 +76,7 @@ python3 -m llama_cpp.server \
   --host "$LLAMA_HOST" \
   --port "$LLAMA_PORT" \
   --n_gpu_layers "$N_GPU_LAYERS" \
-  --n_ctx "$N_CTX" \
-  --verbose &
+  --n_ctx "$N_CTX" &
 
 LLAMA_PID=$!
 echo $LLAMA_PID > "$LLAMA_PID_FILE"
